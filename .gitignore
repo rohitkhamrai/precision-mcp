@@ -27,3 +27,5 @@ ENV/
 .coverage
 htmlcov/
 .code_index.json
+.precision_index.json
+

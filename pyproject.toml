@@ -33,6 +33,8 @@ dev = ["pytest>=7.0.0", "ruff"]
 
 [project.scripts]
 precision-mcp = "precision_mcp.server:main"
+precision-mcp-demo = "precision_mcp.demo:main"
+
 
 [project.urls]
 Homepage = "https://github.com/rohitkhamrai/precision-mcp"

@@ -96,6 +96,7 @@ class CodebaseIndexer:
         matches = []
         q = query.lower()
 
+        has_dot = "." in q
         for file_path, symbols in self.index.items():
             for sym in symbols:
                 name = sym["name"]
@@ -112,7 +113,8 @@ class CodebaseIndexer:
                 for m in sym.get("methods", []):
                     m_name = m["name"]
                     full_name = f"{name}.{m_name}"
-                    if q == m_name.lower() or q in full_name.lower():
+                    matches_method = (q in full_name.lower()) if has_dot else (q == m_name.lower() or q in m_name.lower())
+                    if matches_method:
                         matches.append({
                             "file": file_path,
                             "symbol": full_name,
