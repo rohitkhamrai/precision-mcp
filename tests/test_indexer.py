@@ -4,7 +4,14 @@ import unittest
 from pathlib import Path
 
 from precision_mcp.indexer import CodebaseIndexer
-from precision_mcp.parser import parse_python_file, parse_regex_file, JS_TS_PATTERN
+from precision_mcp.parser import (
+    JS_TS_PATTERN,
+    JS_TS_PATTERNS,
+    parse_c_family_file,
+    parse_python_file,
+    parse_regex_file,
+    validate_syntax,
+)
 
 
 class TestParser(unittest.TestCase):
@@ -68,6 +75,65 @@ const fetchUsers = async () => {};
             self.assertIn("fetchUsers", names)
         finally:
             tmp_path.unlink(missing_ok=True)
+
+    def test_parse_c_family_block_boundaries(self):
+        code = '''
+export function processData(items: string[]): boolean {
+    if (!items || items.length === 0) {
+        return false;
+    }
+    for (const item of items) {
+        console.log(item);
+    }
+    return true;
+}
+
+export interface UserConfig {
+    id: string;
+    roles: string[];
+}
+'''
+        with tempfile.NamedTemporaryFile("w", suffix=".ts", delete=False, encoding="utf-8") as f:
+            f.write(code)
+            tmp_path = Path(f.name)
+
+        try:
+            symbols = parse_c_family_file(tmp_path, JS_TS_PATTERNS)
+            sym_map = {s["name"]: s for s in symbols}
+            self.assertIn("processData", sym_map)
+            self.assertIn("UserConfig", sym_map)
+
+            # Check that end_line encompasses the whole function body
+            fn = sym_map["processData"]
+            self.assertEqual(fn["start_line"], 2)
+            self.assertEqual(fn["end_line"], 10)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    def test_validate_syntax_cross_language(self):
+        # Valid Python
+        ok, err = validate_syntax(".py", "def foo():\n    return 42\n")
+        self.assertTrue(ok)
+        self.assertEqual(err, "")
+
+        # Broken Python
+        ok, err = validate_syntax(".py", "def foo():\n return 42 * * 3")
+        self.assertFalse(ok)
+        self.assertIn("SyntaxError", err)
+
+        # Valid TS
+        ok, err = validate_syntax(".ts", "function test() { const x = [1, 2]; return x; }")
+        self.assertTrue(ok)
+
+        # Unbalanced TS (missing closing brace)
+        ok, err = validate_syntax(".ts", "function test() { if (true) { return 1; }")
+        self.assertFalse(ok)
+        self.assertIn("Unclosed '{'", err)
+
+        # Mismatched bracket in JS
+        ok, err = validate_syntax(".js", "const arr = [1, 2, 3);")
+        self.assertFalse(ok)
+        self.assertIn("Unbalanced ')'", err)
 
 
 class TestIndexer(unittest.TestCase):
@@ -174,6 +240,50 @@ class Runner:
         content = (self.root / "math_utils.py").read_text(encoding="utf-8")
         self.assertNotIn("n * * n", content)
 
+    def test_incremental_caching(self):
+        indexer = CodebaseIndexer(self.root)
+        stats1 = indexer.build()
+        self.assertEqual(stats1["reparsed_count"], 2)
+
+        # Second build without changes -> 0 reparsed
+        stats2 = indexer.build()
+        self.assertEqual(stats2["reparsed_count"], 0)
+        self.assertLess(stats2["elapsed_ms"], 50)
+
+        # Modify one file -> only 1 reparsed
+        math_file = self.root / "math_utils.py"
+        math_file.write_text(math_file.read_text(encoding="utf-8") + "\ndef cube(n):\n    return n * n * n\n", encoding="utf-8")
+
+        stats3 = indexer.build()
+        self.assertEqual(stats3["reparsed_count"], 1)
+        self.assertTrue(any(m["symbol"] == "cube" for m in indexer.find_symbol("cube")))
+
+    def test_patch_symbol_ts_syntax_error_rollback(self):
+        ts_file = self.root / "handler.ts"
+        ts_file.write_text('''
+export function handleRequest(req: any) {
+    return { status: 200 };
+}
+''', encoding="utf-8")
+
+        indexer = CodebaseIndexer(self.root)
+        indexer.build()
+
+        broken_ts = '''export function handleRequest(req: any) {
+    if (req.invalid) {
+        return { status: 400 };
+'''
+        res = indexer.patch_symbol("handler.ts", "handleRequest", broken_ts)
+        self.assertFalse(res["success"])
+        self.assertTrue(res["aborted"])
+        self.assertIn("Syntax verification failed", res["error"])
+
+        # Check file content untouched
+        content = ts_file.read_text(encoding="utf-8")
+        self.assertNotIn("status: 400", content)
+        self.assertIn("status: 200", content)
+
 
 if __name__ == "__main__":
     unittest.main()
+

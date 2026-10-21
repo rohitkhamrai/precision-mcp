@@ -26,6 +26,11 @@ def run_benchmark(target_dir: str = ".") -> dict:
     build_stats = indexer.build(force=True)
     index_time_ms = round((time.perf_counter() - start) * 1000, 2)
 
+    # 1b. Warm Incremental Cache Benchmark
+    warm_start = time.perf_counter()
+    warm_stats = indexer.build()
+    warm_time_ms = round((time.perf_counter() - warm_start) * 1000, 2)
+
     # 2. Pick a target symbol to query
     all_symbols = []
     for file, syms in indexer.index.items():
@@ -59,6 +64,7 @@ def run_benchmark(target_dir: str = ".") -> dict:
         "files_indexed": build_stats["files_indexed"],
         "symbols_indexed": build_stats["symbols_indexed"],
         "cold_index_ms": index_time_ms,
+        "warm_index_ms": warm_time_ms,
         "sample_symbol": f"{sample_file}::{sample_symbol} (L{start_line}-{end_line})",
         "brute_force_tokens": bf_tokens,
         "precision_mcp_tokens": slice_tokens,
@@ -78,6 +84,7 @@ def main():
     print(f"Files Indexed       : {results['files_indexed']}")
     print(f"Symbols Extracted   : {results['symbols_indexed']}")
     print(f"Cold Index Speed    : {results['cold_index_ms']} ms")
+    print(f"Warm Re-Index Speed : {results['warm_index_ms']} ms (Incremental Cache)")
     print(f"Target Query        : {results['sample_symbol']}")
     print("---------------------------------------------------")
     print(f"Brute-Force Context : {results['brute_force_tokens']} tokens (Whole file dumped)")

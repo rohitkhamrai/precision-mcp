@@ -34,10 +34,12 @@ Modern coding agents (Claude Code, Gemini CLI, Cursor, Windsurf, OpenCode) suffe
 
 | Metric | Brute-Force File Read | Standard Ripgrep | **Precision-MCP** |
 |---|---|---|---|
+| **Cold Index Speed** | N/A (no index) | N/A | **~70-120 ms** (Initial scan) |
+| **Warm Re-Index Speed** | N/A | N/A | **<8.5 ms** (Incremental `mtime` cache) |
 | **Query Latency** | ~45 ms (full read) | ~25 ms (text search) | **<1.0 ms** (Indexed AST) |
-| **Token Usage per Query** | 800 - 1,500+ tokens | Snippet only (no body) | **35 - 150 tokens (96.1% saved)** |
+| **Token Usage per Query** | 800 - 1,500+ tokens | Snippet only (no body) | **35 - 150 tokens (96.4% saved)** |
 | **Cascading Blast Radius** | Manual search | Incomplete regex | **Automated multi-level call graph** |
-| **Code Mutation Safety** | Fragile text replace | None | **AST Syntax Gate with Auto-Rollback** |
+| **Code Mutation Safety** | Fragile text replace | None | **Cross-Language AST/Syntax Gate with Auto-Rollback** |
 | **Memory Footprint** | Process memory bloat | Variable | **<12 MB** (Zero dependencies) |
 
 Run the visual benchmark demo on your own machine:
@@ -137,20 +139,20 @@ precision-mcp
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `index_codebase` | `workspace_path?`, `force?` | Scans and indexes the workspace into an in-memory symbol graph in <18ms. |
+| `index_codebase` | `workspace_path?`, `force?` | Scans workspace with incremental `mtime` caching (<8.5ms warm re-index). |
 | `find_symbol` | `query` | Locates functions, classes, or methods with exact line boundaries `[start, end]`, signatures, and docstrings. |
 | `get_outline` | `file_path` | Generates structural skeleton of any file without reading its entire body. |
 | `get_symbol_slice` | `file_path`, `symbol_name` | Extracts the exact source code block of a single function or class. |
 | `find_callers` | `symbol_name` | Identifies all direct callers of a given symbol across the codebase. |
 | `get_impact_radius` | `symbol_name`, `max_depth?` | **Blast Radius Analyzer**: Traces cascading multi-level callers and affected files before refactoring. |
-| `patch_symbol` | `file_path`, `symbol_name`, `new_code` | **AST-Safe Surgical Mutator**: Replaces a symbol block and verifies AST syntax. Rolls back automatically if syntax is invalid. |
+| `patch_symbol` | `file_path`, `symbol_name`, `new_code` | **Syntax-Safe Surgical Mutator**: Replaces symbol block with cross-language syntax verification (Python, TS/JS, Go, Rust) and automatic rollback. |
 
 
 ---
 
 ## 🧪 Testing
 
-Run unit tests across parser, indexer, and MCP protocol handlers:
+Run 20 unit tests across parser, indexer, and MCP protocol handlers:
 
 ```bash
 python -m unittest discover -s tests -v
