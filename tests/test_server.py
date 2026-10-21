@@ -50,6 +50,8 @@ def greet(name: str):
         self.assertIn("get_outline", tool_names)
         self.assertIn("get_symbol_slice", tool_names)
         self.assertIn("find_callers", tool_names)
+        self.assertIn("get_impact_radius", tool_names)
+        self.assertIn("patch_symbol", tool_names)
 
     def test_tools_call_find_symbol(self):
         req = {
@@ -81,6 +83,26 @@ def greet(name: str):
         content = res["result"]["content"][0]["text"]
         self.assertIn("def greet(name: str):", content)
         self.assertIn('return f"Hello {name}"', content)
+
+    def test_tools_call_patch_symbol(self):
+        req = {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "patch_symbol",
+                "arguments": {
+                    "file_path": "sample.py",
+                    "symbol_name": "greet",
+                    "new_code": 'def greet(name: str):\n    return f"Hi {name}!"',
+                },
+            },
+        }
+        res = self.server.handle_request(req)
+        self.assertEqual(res["id"], 5)
+        content = res["result"]["content"][0]["text"]
+        self.assertIn("[SUCCESS]", content)
+        self.assertIn("AST Verified", content)
 
 
 if __name__ == "__main__":

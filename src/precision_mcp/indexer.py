@@ -204,3 +204,124 @@ class CodebaseIndexer:
                             "start_line": m.get("start_line"),
                         })
         return callers
+
+    def get_impact_radius(self, symbol_name: str, max_depth: int = 2) -> dict[str, Any]:
+        """Trace cascading downstream blast radius (who calls this, and who calls them)."""
+        self.ensure_indexed()
+        visited: set[str] = set()
+        frontier: list[tuple[str, int]] = [(symbol_name, 0)]
+        impact_tree: list[dict[str, Any]] = []
+        affected_files: set[str] = set()
+
+        while frontier:
+            current_sym, depth = frontier.pop(0)
+            if depth >= max_depth:
+                continue
+
+            callers = self.find_callers(current_sym)
+            for c in callers:
+                c_name = c["caller_symbol"]
+                affected_files.add(c["file"])
+                if c_name not in visited:
+                    visited.add(c_name)
+                    impact_tree.append({
+                        "caller": c_name,
+                        "file": c["file"],
+                        "line": c["start_line"],
+                        "depth": depth + 1,
+                        "triggered_by": current_sym,
+                    })
+                    frontier.append((c_name, depth + 1))
+
+        # Risk score calculation
+        fanout = len(impact_tree)
+        risk = "low" if fanout <= 2 else ("medium" if fanout <= 6 else "high")
+
+        return {
+            "target_symbol": symbol_name,
+            "total_callers": fanout,
+            "affected_files": sorted(list(affected_files)),
+            "risk_level": risk,
+            "call_chain": impact_tree,
+        }
+
+    def patch_symbol(self, file_path: str, symbol_name: str, new_code: str) -> dict[str, Any]:
+        """Surgically replace a symbol's code block with AST syntax validation."""
+        norm_path = Path(file_path).as_posix()
+        full_path = self.root_dir / norm_path
+        if not full_path.is_file():
+            found = next((self.root_dir / k for k in self.index if k.endswith(norm_path)), None)
+            if not found or not found.is_file():
+                return {"success": False, "error": f"File not found: {file_path}"}
+            full_path = found
+            norm_path = full_path.relative_to(self.root_dir).as_posix()
+
+        outline = self.get_outline(norm_path)
+        target = None
+        for sym in outline:
+            if sym["name"] == symbol_name:
+                target = sym
+                break
+            for m in sym.get("methods", []):
+                if m["name"] == symbol_name or f"{sym['name']}.{m['name']}" == symbol_name:
+                    target = m
+                    break
+            if target:
+                break
+
+        if not target:
+            return {"success": False, "error": f"Symbol '{symbol_name}' not found in '{norm_path}'"}
+
+        start_line = target["start_line"]
+        end_line = target["end_line"]
+
+        try:
+            original_content = full_path.read_text(encoding="utf-8", errors="replace")
+            lines = original_content.splitlines()
+
+            # Preserve line endings
+            newline = "\r\n" if "\r\n" in original_content else "\n"
+
+            # Replace lines [start_line - 1 : end_line]
+            replacement_lines = new_code.strip().splitlines()
+            new_lines = lines[: start_line - 1] + replacement_lines + lines[end_line:]
+            modified_content = newline.join(new_lines) + newline
+
+            # AST Syntax Verification for Python
+            if full_path.suffix.lower() == ".py":
+                import ast
+                try:
+                    ast.parse(modified_content, filename=str(full_path))
+                except SyntaxError as syn_err:
+                    return {
+                        "success": False,
+                        "error": f"SyntaxError in replacement: {syn_err.msg} at line {syn_err.lineno}",
+                        "aborted": True,
+                    }
+
+            # Atomic file write
+            tmp_path = full_path.with_suffix(full_path.suffix + ".tmp")
+            tmp_path.write_text(modified_content, encoding="utf-8")
+            os.replace(tmp_path, full_path)
+
+            # Refresh index for this file
+            from .parser import parse_python_file, parse_regex_file, JS_TS_PATTERN, RUST_GO_PATTERN
+            ext = full_path.suffix.lower()
+            if ext == ".py":
+                self.index[norm_path] = parse_python_file(full_path, modified_content)
+            elif ext in (".js", ".ts", ".jsx", ".tsx"):
+                self.index[norm_path] = parse_regex_file(full_path, JS_TS_PATTERN, modified_content)
+            elif ext in (".rs", ".go"):
+                self.index[norm_path] = parse_regex_file(full_path, RUST_GO_PATTERN, modified_content)
+
+            return {
+                "success": True,
+                "file": norm_path,
+                "symbol": symbol_name,
+                "lines_replaced": f"{start_line}-{end_line}",
+                "original_line_count": end_line - start_line + 1,
+                "new_line_count": len(replacement_lines),
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+

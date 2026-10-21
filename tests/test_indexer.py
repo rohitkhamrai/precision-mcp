@@ -126,6 +126,54 @@ class Runner:
         self.assertIn("helper", caller_symbols)
         self.assertIn("Runner.execute", caller_symbols)
 
+    def test_get_impact_radius(self):
+        indexer = CodebaseIndexer(self.root)
+        indexer.build()
+
+        impact = indexer.get_impact_radius("square", max_depth=2)
+        self.assertEqual(impact["target_symbol"], "square")
+        self.assertGreaterEqual(impact["total_callers"], 2)
+        self.assertIn("math_utils.py", impact["affected_files"])
+        self.assertIn("service.py", impact["affected_files"])
+
+    def test_patch_symbol_success(self):
+        indexer = CodebaseIndexer(self.root)
+        indexer.build()
+
+        new_code = '''def square(n):
+    """Enhanced square with validation."""
+    if not isinstance(n, (int, float)):
+        raise TypeError("Number required")
+    return n * n'''
+
+        res = indexer.patch_symbol("math_utils.py", "square", new_code)
+        self.assertTrue(res["success"])
+        self.assertEqual(res["symbol"], "square")
+
+        # Verify file content updated
+        content = (self.root / "math_utils.py").read_text(encoding="utf-8")
+        self.assertIn("Enhanced square with validation", content)
+
+        # Verify re-indexed
+        sym_slice = indexer.get_symbol_slice("math_utils.py", "square")
+        self.assertIn("TypeError", sym_slice["code"])
+
+    def test_patch_symbol_syntax_error_rollback(self):
+        indexer = CodebaseIndexer(self.root)
+        indexer.build()
+
+        broken_code = '''def square(n):
+    return n * * n  # Invalid syntax'''
+
+        res = indexer.patch_symbol("math_utils.py", "square", broken_code)
+        self.assertFalse(res["success"])
+        self.assertTrue(res["aborted"])
+        self.assertIn("SyntaxError", res["error"])
+
+        # Verify original file untouched
+        content = (self.root / "math_utils.py").read_text(encoding="utf-8")
+        self.assertNotIn("n * * n", content)
+
 
 if __name__ == "__main__":
     unittest.main()

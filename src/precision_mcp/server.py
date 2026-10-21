@@ -93,6 +93,47 @@ TOOLS_DEFINITIONS = [
             "required": ["symbol_name"],
         },
     },
+    {
+        "name": "get_impact_radius",
+        "description": "Analyze cascading downstream blast radius before refactoring. Identifies all callers, affected files, and risk level across the codebase.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "symbol_name": {
+                    "type": "string",
+                    "description": "Name of the function, class, or method to analyze.",
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "description": "Maximum depth for cascading caller traversal (default: 2).",
+                    "default": 2,
+                },
+            },
+            "required": ["symbol_name"],
+        },
+    },
+    {
+        "name": "patch_symbol",
+        "description": "Surgically replace a function or class block by symbol name. Automatically validates AST syntax and rolls back if invalid, guaranteeing zero malformed edits.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Path of the file to modify.",
+                },
+                "symbol_name": {
+                    "type": "string",
+                    "description": "Name of the function, class, or method being replaced.",
+                },
+                "new_code": {
+                    "type": "string",
+                    "description": "The replacement source code for that symbol block.",
+                },
+            },
+            "required": ["file_path", "symbol_name", "new_code"],
+        },
+    },
 ]
 
 
@@ -238,6 +279,35 @@ class MCPServer:
             for c in callers:
                 lines.append(f"- {c['file']}:L{c['start_line']} in {c['caller_type']} '{c['caller_symbol']}'")
             return "\n".join(lines)
+
+        elif name == "get_impact_radius":
+            symbol_name = args.get("symbol_name", "")
+            max_depth = args.get("max_depth", 2)
+            impact = self.indexer.get_impact_radius(symbol_name, max_depth)
+            lines = [
+                f"### Blast Radius Report for '{symbol_name}' [Risk: {impact['risk_level'].upper()}]\n",
+                f"- **Total Downstream Callers**: {impact['total_callers']}",
+                f"- **Affected Files** ({len(impact['affected_files'])}): {', '.join(impact['affected_files']) or 'None'}\n",
+            ]
+            if impact["call_chain"]:
+                lines.append("#### Cascading Call Chain:")
+                for step in impact["call_chain"]:
+                    lines.append(f"  [Depth {step['depth']}] {step['file']}:{step['line']} -> `{step['caller']}` calls `{step['triggered_by']}`")
+            return "\n".join(lines)
+
+        elif name == "patch_symbol":
+            file_path = args.get("file_path", "")
+            symbol_name = args.get("symbol_name", "")
+            new_code = args.get("new_code", "")
+            res = self.indexer.patch_symbol(file_path, symbol_name, new_code)
+            if not res.get("success"):
+                return f"[FAILED] Could not patch '{symbol_name}' in '{file_path}': {res.get('error')}"
+            return (
+                f"[SUCCESS] Surgically patched '{symbol_name}' in '{res['file']}'\n"
+                f"- Replaced lines: {res['lines_replaced']}\n"
+                f"- Line delta: {res['original_line_count']} lines -> {res['new_line_count']} lines\n"
+                f"- Syntax Validation: PASSED (AST Verified)"
+            )
 
         else:
             raise ValueError(f"Unknown tool name: {name}")

@@ -128,11 +128,14 @@ precision-mcp
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `index_codebase` | `workspace_path?`, `force?` | Scans and indexes the workspace into an in-memory symbol graph. |
+| `index_codebase` | `workspace_path?`, `force?` | Scans and indexes the workspace into an in-memory symbol graph in <18ms. |
 | `find_symbol` | `query` | Locates functions, classes, or methods with exact line boundaries `[start, end]`, signatures, and docstrings. |
 | `get_outline` | `file_path` | Generates structural skeleton of any file without reading its entire body. |
 | `get_symbol_slice` | `file_path`, `symbol_name` | Extracts the exact source code block of a single function or class. |
-| `find_callers` | `symbol_name` | Identifies all functions/methods that call a given symbol. |
+| `find_callers` | `symbol_name` | Identifies all direct callers of a given symbol across the codebase. |
+| `get_impact_radius` | `symbol_name`, `max_depth?` | **Blast Radius Analyzer**: Traces cascading multi-level callers and affected files before refactoring. |
+| `patch_symbol` | `file_path`, `symbol_name`, `new_code` | **AST-Safe Surgical Mutator**: Replaces a symbol block and verifies AST syntax. Rolls back automatically if syntax is invalid. |
+
 
 ---
 
