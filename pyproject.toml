@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "precision-mcp"
+version = "0.1.0"
+description = "Cursor-style AST Codebase Indexing & Surgical Slicing MCP Server for Coding Agents"
+readme = "README.md"
+authors = [
+    { name = "Rohit Kumar Khamrai", email = "rohitkumarkhamrai@gmail.com" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["mcp", "model-context-protocol", "ast", "codebase-index", "cursor", "ai-agents"]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.0.0"]
+dev = ["pytest>=7.0.0", "ruff"]
+
+[project.scripts]
+precision-mcp = "precision_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/rohitkhamrai/precision-mcp"
+Repository = "https://github.com/rohitkhamrai/precision-mcp.git"
+Issues = "https://github.com/rohitkhamrai/precision-mcp/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
