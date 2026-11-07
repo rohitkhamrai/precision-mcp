@@ -1,5 +1,5 @@
 <div align="center">
-[![M8ven Score](https://m8ven.ai/badge/mcp/rohitkhamrai/precision-mcp)](https://m8ven.ai/mcp/rohitkhamrai/precision-mcp?s=readme)
+https://m8ven.ai/badge/mcp/rohitkhamrai/precision-mcp
 # ⚡ Precision-MCP
 
 **Cursor-style AST Codebase Indexing & Surgical Slicing MCP Server for AI Coding Agents**
